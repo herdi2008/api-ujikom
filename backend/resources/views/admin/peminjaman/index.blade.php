@@ -95,7 +95,7 @@
                                             <option value="Diajukan" {{ $item->status == 'Diajukan' ? 'selected' : '' }}>Diajukan</option>
                                             <option value="Dipinjam" {{ $item->status == 'Dipinjam' ? 'selected' : '' }}>Dipinjam</option>
                                             <option value="Selesai" {{ $item->status == 'Selesai' ? 'selected' : '' }}>Selesai</option>
-                                            <option value="Dikembalikan" {{ $item->status == 'Dikembalikan' ? 'selected' : '' }}>Dikembali</option>
+                                            <option value="Dikembali" {{ ($item->status == 'Dikembali' || $item->status == 'Dikembalikan') ? 'selected' : '' }}>Dikembali</option>
                                         </select>
                                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
                                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">

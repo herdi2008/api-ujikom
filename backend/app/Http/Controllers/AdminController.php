@@ -374,13 +374,17 @@ class AdminController extends Controller
         $peminjaman = Peminjaman::with('detailPinjam.alat')->findOrFail($id);
 
         $request->validate([
-            'status' => 'required|in:diajukan,dipinjam,selesai,telat',
+            'status' => 'required|in:diajukan,dipinjam,selesai,telat,dikembali,dikembalikan,Diajukan,Dipinjam,Selesai,Telat,Dikembali,Dikembalikan',
         ]);
 
         DB::beginTransaction();
         try {
-            $statusLama = $peminjaman->status;
-            $statusBaru = $request->status;
+            $statusLama = strtolower($peminjaman->status);
+            $statusBaru = strtolower($request->status);
+
+            if (in_array($statusBaru, ['dikembali', 'dikembalikan'])) {
+                $statusBaru = 'selesai';
+            }
 
             if ($statusLama != 'dipinjam' && $statusBaru == 'dipinjam') {
                 foreach ($peminjaman->detailPinjam as $detail) {
@@ -390,7 +394,7 @@ class AdminController extends Controller
                     }
                     $alat->decrement('stok', $detail->jumlah);
                 }
-            } elseif ($statusLama == 'dipinjam' && ($statusBaru == 'selesai')) {
+            } elseif ($statusLama == 'dipinjam' && ($statusBaru == 'selesai' || $statusBaru == 'dikembalikan')) {
                 foreach ($peminjaman->detailPinjam as $detail) {
                     $detail->alat->increment('stok', $detail->jumlah);
                 }
@@ -509,7 +513,7 @@ class AdminController extends Controller
             ]);
 
             DB::commit();
-            return redirect()->route('admin.pengembalian.index')->with('success', 'Pengembalian berhasil diproses.');
+            return redirect()->route('admin.peminjaman.index')->with('success', 'Pengembalian berhasil diproses.');
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->with('error', $e->getMessage());
