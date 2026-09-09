@@ -42,9 +42,7 @@
                         class="block px-4 py-2 rounded-lg transition {{ request()->routeIs('admin.pengembalian*') ? 'bg-gray-800 text-white font-medium shadow' : 'text-gray-400 hover:bg-gray-800 hover:text-white' }}">
                         Kelola Pengembalian</a>
 
-                    <a href="{{ route('admin.log.index') }}"
-                        class="block px-4 py-2 rounded-lg transition {{ request()->routeIs('admin.log*') ? 'bg-gray-800 text-white font-medium shadow' : 'text-gray-400 hover:bg-gray-800 hover:text-white' }}">
-                        Log Aktivitas</a>
+                    {{-- MENU LOG AKTIVITAS SUDAH DIHAPUS DARI SINI --}}
 
                     <a href="{{ route('admin.user.index') }}"
                         class="block px-4 py-2 rounded-lg transition {{ request()->routeIs('admin.user*') ? 'bg-gray-800 text-white font-medium shadow' : 'text-gray-400 hover:bg-gray-800 hover:text-white' }}">
