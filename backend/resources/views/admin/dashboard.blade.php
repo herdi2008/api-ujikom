@@ -23,21 +23,49 @@
 
     {{-- Kartu ringkasan --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white rounded-lg shadow-sm border p-5">
-            <p class="text-xs uppercase text-gray-500 tracking-wide">Total Alat</p>
-            <p class="text-2xl font-semibold mt-1">{{ $totalAlat }}</p>
+        <div class="bg-white rounded-lg shadow-sm border p-5 flex items-center justify-between">
+            <div>
+                <p class="text-xs uppercase text-gray-500 tracking-wide">Total Alat</p>
+                <p class="text-2xl font-semibold mt-1">{{ $totalAlat }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+            </div>
         </div>
-        <div class="bg-white rounded-lg shadow-sm border p-5">
-            <p class="text-xs uppercase text-gray-500 tracking-wide">Peminjaman Aktif</p>
-            <p class="text-2xl font-semibold mt-1 text-blue-600">{{ $peminjamanAktif }}</p>
+        <div class="bg-white rounded-lg shadow-sm border p-5 flex items-center justify-between">
+            <div>
+                <p class="text-xs uppercase text-gray-500 tracking-wide">Peminjaman Aktif</p>
+                <p class="text-2xl font-semibold mt-1 text-blue-600">{{ $peminjamanAktif }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            </div>
         </div>
-        <div class="bg-white rounded-lg shadow-sm border p-5">
-            <p class="text-xs uppercase text-gray-500 tracking-wide">Pengembalian Bulan Ini</p>
-            <p class="text-2xl font-semibold mt-1 text-green-600">{{ $pengembalianBulanIni }}</p>
+        <div class="bg-white rounded-lg shadow-sm border p-5 flex items-center justify-between">
+            <div>
+                <p class="text-xs uppercase text-gray-500 tracking-wide">Pengembalian Bulan Ini</p>
+                <p class="text-2xl font-semibold mt-1 text-green-600">{{ $pengembalianBulanIni }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-500">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+            </div>
         </div>
-        <div class="bg-white rounded-lg shadow-sm border p-5">
-            <p class="text-xs uppercase text-gray-500 tracking-wide">Total User</p>
-            <p class="text-2xl font-semibold mt-1">{{ $totalUser }}</p>
+        <div class="bg-white rounded-lg shadow-sm border p-5 flex items-center justify-between">
+            <div>
+                <p class="text-xs uppercase text-gray-500 tracking-wide">Total User</p>
+                <p class="text-2xl font-semibold mt-1">{{ $totalUser }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-4-4" />
+                </svg>
+            </div>
         </div>
     </div>
 
@@ -58,14 +86,60 @@
             </thead>
             <tbody>
                 @forelse ($logs as $log)
-                    <tr class="border-t">
-                        <td class="px-6 py-3 text-gray-500">{{ $log->created_at->format('Y-m-d H:i:s') }}</td>
-                        <td class="px-6 py-3 font-medium text-gray-800">{{ $log->user->name ?? '-' }}</td>
-                        <td class="px-6 py-3 text-gray-600">{{ $log->aktivitas }}</td>
+                    @php
+                        // Tentukan ikon & warna berdasarkan isi teks aktivitas
+                        $text = strtolower($log->aktivitas);
+
+                        if (str_contains($text, 'menambahkan')) {
+                            $iconBg = 'bg-emerald-50 text-emerald-500';
+                            $icon = 'M12 4v16m8-8H4'; // plus
+                        } elseif (str_contains($text, 'telat')) {
+                            $iconBg = 'bg-red-50 text-red-500';
+                            $icon = 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'; // clock/warning
+                        } elseif (str_contains($text, 'dikembalikan') || str_contains($text, 'selesai')) {
+                            $iconBg = 'bg-blue-50 text-blue-500';
+                            $icon = 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z'; // check circle
+                        } elseif (str_contains($text, 'menghapus') || str_contains($text, 'dihapus') || str_contains($text, 'membatalkan')) {
+                            $iconBg = 'bg-rose-50 text-rose-500';
+                            $icon = 'M6 18L18 6M6 6l12 12'; // x
+                        } elseif (str_contains($text, 'memperbarui') || str_contains($text, 'mengoreksi') || str_contains($text, 'diperbarui')) {
+                            $iconBg = 'bg-amber-50 text-amber-500';
+                            $icon = 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'; // pencil
+                        } else {
+                            $iconBg = 'bg-gray-100 text-gray-500';
+                            $icon = 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'; // info
+                        }
+
+                        $userName = $log->user->name ?? '-';
+                        $initial = strtoupper(substr($userName, 0, 1));
+                    @endphp
+                    <tr class="border-t hover:bg-gray-50/60 transition">
+                        <td class="px-6 py-3 text-gray-500 whitespace-nowrap">
+                            <div>{{ $log->created_at->format('d M Y, H:i') }}</div>
+                            <div class="text-[11px] text-gray-400">{{ $log->created_at->diffForHumans() }}</div>
+                        </td>
+                        <td class="px-6 py-3">
+                            <div class="flex items-center gap-2">
+                                <div class="w-7 h-7 rounded-full bg-gray-800 text-white text-[11px] font-semibold flex items-center justify-center flex-shrink-0">
+                                    {{ $initial }}
+                                </div>
+                                <span class="font-medium text-gray-800">{{ $userName }}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-3 text-gray-600">
+                            <div class="flex items-center gap-3">
+                                <div class="w-7 h-7 rounded-full {{ $iconBg }} flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="{{ $icon }}" />
+                                    </svg>
+                                </div>
+                                <span>{{ $log->aktivitas }}</span>
+                            </div>
+                        </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="3" class="px-6 py-4 text-center text-gray-400">Belum ada aktivitas.</td>
+                        <td colspan="3" class="px-6 py-8 text-center text-gray-400">Belum ada aktivitas.</td>
                     </tr>
                 @endforelse
             </tbody>

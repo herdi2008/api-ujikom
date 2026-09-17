@@ -1,4 +1,4 @@
-@extends('layouts.app')
+@extends('layouts.admin')
 
 @section('title', 'Kelola Peminjaman')
 @section('header-title', 'Manajemen Transaksi Peminjaman')
@@ -10,7 +10,7 @@
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
             <h3 class="text-xl font-bold text-gray-900 tracking-tight">Daftar Transaksi Peminjaman</h3>
-            <p class="text-sm text-gray-400 mt-1 font-normal">{{ $peminjamans->count() }} transaksi tercatat</p>
+            <p class="text-sm text-gray-400 mt-1 font-normal">{{ $peminjamans->total() }} transaksi tercatat</p>
         </div>
         
         <div class="flex flex-wrap items-center gap-3">
@@ -47,6 +47,11 @@
             </thead>
             <tbody class="divide-y divide-gray-100/70">
                 @forelse($peminjamans as $item)
+                    @php
+                        // Normalisasi status ke huruf kecil supaya konsisten
+                        // dengan cara controller menyimpan data (strtolower).
+                        $statusLower = strtolower($item->status);
+                    @endphp
                     <tr class="hover:bg-gray-50/50 transition">
                         <!-- Peminjam -->
                         <td class="py-5 px-4 font-bold text-gray-800 align-middle">
@@ -73,14 +78,16 @@
 
                         <!-- Status Badge -->
                         <td class="py-5 px-4 align-middle">
-                            @if($item->status == 'Dipinjam')
+                            @if($statusLower == 'dipinjam')
                                 <span class="bg-blue-100/80 text-blue-600 px-3.5 py-1.5 rounded-full text-[11px] font-semibold inline-block">Dipinjam</span>
-                            @elseif($item->status == 'Selesai')
+                            @elseif($statusLower == 'selesai')
                                 <span class="bg-gray-100 text-gray-600 px-3.5 py-1.5 rounded-full text-[11px] font-semibold inline-block">Selesai</span>
-                            @elseif($item->status == 'Dikembalikan' || $item->status == 'Dikembali')
+                            @elseif($statusLower == 'dikembalikan' || $statusLower == 'dikembali')
                                 <span class="bg-emerald-100/80 text-emerald-600 px-3.5 py-1.5 rounded-full text-[11px] font-semibold inline-block">Dikembalikan</span>
+                            @elseif($statusLower == 'telat')
+                                <span class="bg-red-100/80 text-red-600 px-3.5 py-1.5 rounded-full text-[11px] font-semibold inline-block">Telat</span>
                             @else
-                                <span class="bg-amber-100/80 text-amber-600 px-3.5 py-1.5 rounded-full text-[11px] font-semibold inline-block">{{ $item->status }}</span>
+                                <span class="bg-amber-100/80 text-amber-600 px-3.5 py-1.5 rounded-full text-[11px] font-semibold inline-block">{{ ucfirst($item->status) }}</span>
                             @endif
                         </td>
 
@@ -92,10 +99,10 @@
                                     @method('PATCH')
                                     <div class="relative">
                                         <select name="status" onchange="this.form.submit()" class="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs bg-white text-gray-700 focus:outline-none appearance-none cursor-pointer pr-6 text-center font-medium">
-                                            <option value="Diajukan" {{ $item->status == 'Diajukan' ? 'selected' : '' }}>Diajukan</option>
-                                            <option value="Dipinjam" {{ $item->status == 'Dipinjam' ? 'selected' : '' }}>Dipinjam</option>
-                                            <option value="Selesai" {{ $item->status == 'Selesai' ? 'selected' : '' }}>Selesai</option>
-                                            <option value="Dikembali" {{ ($item->status == 'Dikembali' || $item->status == 'Dikembalikan') ? 'selected' : '' }}>Dikembali</option>
+                                            <option value="Diajukan" {{ $statusLower == 'diajukan' ? 'selected' : '' }}>Diajukan</option>
+                                            <option value="Dipinjam" {{ $statusLower == 'dipinjam' ? 'selected' : '' }}>Dipinjam</option>
+                                            <option value="Selesai" {{ $statusLower == 'selesai' ? 'selected' : '' }}>Selesai</option>
+                                            <option value="Dikembali" {{ ($statusLower == 'dikembali' || $statusLower == 'dikembalikan') ? 'selected' : '' }}>Dikembali</option>
                                         </select>
                                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
                                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -124,6 +131,11 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="mt-6">
+        {{ $peminjamans->links() }}
     </div>
 
 </div>
