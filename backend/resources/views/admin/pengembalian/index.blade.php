@@ -1,169 +1,136 @@
-@extends('layouts.admin')
+@extends('layouts.app')
 
-@section('title', 'Kelola Pengembalian')
-@section('header-title', 'Kelola Pengembalian')
+@section('title', 'Daftar Pengembalian')
 
 @section('content')
+<div class="p-6 space-y-6">
 
-    {{-- Flash messages --}}
+    {{-- Flash Messages --}}
     @if (session('success'))
-        <div class="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-green-800">
+        <div class="p-4 text-sm font-medium text-green-800 bg-green-50 rounded-xl border border-green-200">
             {{ session('success') }}
         </div>
     @endif
 
-    @if (session('error'))
-        <div class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800">
-            {{ session('error') }}
+    <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Daftar Pengembalian</h1>
+            <p class="text-xs text-gray-500 mt-1">
+                Menampilkan <span class="font-semibold">{{ $pengembalians->total() ?? $pengembalians->count() }}</span> data (semua periode)
+            </p>
         </div>
-    @endif
 
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        {{-- Form Pencarian & Filter --}}
+        <form action="{{ route('admin.pengembalian.index') }}" method="GET" class="flex flex-wrap items-center gap-3">
+            <input type="text" name="search" value="{{ request('search') }}" 
+                   placeholder="Cari peminjam, kondisi, status, petugas..." 
+                   class="w-72 px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
 
-        {{-- Filter & Action Bar --}}
-        <div class="flex flex-wrap items-center justify-between gap-3 p-5 border-b border-gray-200">
-            <h2 class="text-lg font-bold text-gray-800">Daftar Pengembalian</h2>
+            <select name="bulan" class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                <option value="">Semua Bulan</option>
+                @for ($m=1; $m<=12; $m++)
+                    <option value="{{ sprintf('%02d', $m) }}" {{ request('bulan') == sprintf('%02d', $m) ? 'selected' : '' }}>
+                        {{ date('F', mktime(0, 0, 0, $m, 1)) }}
+                    </option>
+                @endfor
+            </select>
 
-            <div class="flex flex-wrap items-center gap-3">
-                <form action="{{ route('admin.pengembalian.index') }}" method="GET" class="flex flex-wrap gap-2 items-center">
-                    <input
-                        type="text"
-                        name="search"
-                        value="{{ request('search', $search) }}"
-                        placeholder="Cari peminjam, kondisi, status, petugas..."
-                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-gray-800"
-                    >
+            <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-slate-800 rounded-lg hover:bg-slate-700 transition">
+                Cari
+            </button>
 
-                    {{-- Filter Bulan --}}
-                    @php
-                        $bulanOptions = [];
-                        for ($i = 0; $i < 12; $i++) {
-                            $date = now()->subMonths($i);
-                            $bulanOptions[$date->format('Y-m')] = $date->translatedFormat('F Y');
-                        }
-                    @endphp
-                    <select name="bulan" onchange="this.form.submit()"
-                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-800">
-                        <option value="">Semua Bulan</option>
-                        @foreach ($bulanOptions as $value => $label)
-                            <option value="{{ $value }}" {{ request('bulan', $bulan) == $value ? 'selected' : '' }}>
-                                {{ $label }}{{ $value == now()->format('Y-m') ? ' (Bulan Ini)' : '' }}
-                            </option>
-                        @endforeach
-                    </select>
-
-                    <button type="submit" class="bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition">
-                        Cari
-                    </button>
-                    
-                    @if (request('search') || request('bulan'))
-                        <a href="{{ route('admin.pengembalian.index') }}" class="text-sm text-gray-500 hover:text-gray-800 self-center">
-                            Reset
-                        </a>
-                    @endif
-                </form>
-
-                <a href="{{ route('admin.pengembalian.create') }}"
-                   class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition whitespace-nowrap">
+            @if(Route::has('admin.pengembalian.create'))
+                <a href="{{ route('admin.pengembalian.create') }}" class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition flex items-center gap-1">
                     + Tambah Pengembalian
                 </a>
-            </div>
-        </div>
-
-        {{-- Info jumlah data --}}
-        <div class="px-5 py-3 bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
-            Menampilkan <strong>{{ $pengembalians->total() }}</strong> data
-            @if ($bulan)
-                untuk bulan <strong>{{ \Carbon\Carbon::createFromFormat('Y-m', $bulan)->translatedFormat('F Y') }}</strong>
-                @if ($bulan == now()->format('Y-m'))
-                    <span class="inline-block ml-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-600 font-semibold">Sesuai kartu dashboard</span>
-                @endif
-            @else
-                (semua periode)
             @endif
-        </div>
+        </form>
+    </div>
 
-        {{-- Tabel Data --}}
+    {{-- Tabel Pengembalian --}}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left">
-                <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+            <table class="w-full text-left text-sm text-gray-700">
+                <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider border-b border-gray-200">
                     <tr>
-                        <th class="px-5 py-3">Peminjaman</th>
-                        <th class="px-5 py-3">Peminjam</th>
-                        <th class="px-5 py-3">Alat</th>
-                        <th class="px-5 py-3">Tgl Kembali</th>
-                        <th class="px-5 py-3">Kondisi</th>
-                        <th class="px-5 py-3">Denda</th>
-                        <th class="px-5 py-3">Status</th>
-                        <th class="px-5 py-3">Petugas</th>
-                        <th class="px-5 py-3 text-right">Aksi</th>
+                        <th class="px-4 py-3 font-semibold">PEMINJAMAN</th>
+                        <th class="px-4 py-3 font-semibold">PEMINJAM</th>
+                        <th class="px-4 py-3 font-semibold">ALAT</th>
+                        <th class="px-4 py-3 font-semibold">TGL KEMBALI</th>
+                        <th class="px-4 py-3 font-semibold">KONDISI</th>
+                        <th class="px-4 py-3 font-semibold">DENDA</th>
+                        <th class="px-4 py-3 font-semibold">STATUS</th>
+                        <th class="px-4 py-3 font-semibold">PETUGAS</th>
+                        <th class="px-4 py-3 font-semibold text-center">AKSI</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     @forelse ($pengembalians as $item)
-                        @php
-                            $tglKembali = \Carbon\Carbon::parse($item->tgl_kembali);
-                            $isBulanIni = $tglKembali->isSameMonth(now()) && $tglKembali->isSameYear(now());
-                            $status = strtolower($item->peminjaman->status ?? '-');
-                        @endphp
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-5 py-3 font-semibold text-gray-800">#{{ $item->peminjaman_id }}</td>
-                            <td class="px-5 py-3 font-medium text-gray-900">{{ $item->peminjaman->user->name ?? '-' }}</td>
-                            <td class="px-5 py-3 text-gray-600">
-                                @foreach ($item->peminjaman->detailPinjam as $detail)
-                                    {{ $detail->alat->nama_alat ?? '-' }} (x{{ $detail->jumlah }})@if (!$loop->last), @endif
+                        <tr class="hover:bg-gray-50/60 transition">
+                            <td class="px-4 py-4 font-bold text-gray-900">
+                                #{{ $item->peminjaman->id ?? '-' }}
+                            </td>
+                            <td class="px-4 py-4 font-bold text-gray-900">
+                                {{ $item->peminjaman->user->name ?? '-' }}
+                            </td>
+                            <td class="px-4 py-4 text-xs text-gray-600 space-y-1">
+                                @foreach ($item->peminjaman->detailPinjam ?? [] as $detail)
+                                    <div>
+                                        {{ $detail->alat->nama_alat ?? '-' }} 
+                                        <span class="text-gray-400">(x{{ $detail->jumlah }})</span>
+                                    </div>
                                 @endforeach
                             </td>
-                            <td class="px-5 py-3">
-                                <div class="flex items-center gap-2">
-                                    <span>{{ $tglKembali->format('Y-m-d') }}</span>
-                                    @if ($isBulanIni)
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-600">Bulan Ini</span>
-                                    @endif
-                                </div>
+                            <td class="px-4 py-4 text-xs whitespace-nowrap">
+                                <div>{{ \Carbon\Carbon::parse($item->tgl_kembali)->format('Y-m-d') }}</div>
+                                
+                                {{-- PERBAIKAN: Badge dinamis sesuai bulan aktual --}}
+                                @if(\Carbon\Carbon::parse($item->tgl_kembali)->isCurrentMonth())
+                                    <span class="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold text-blue-600 bg-blue-100 rounded-full">
+                                        Bulan Ini
+                                    </span>
+                                @else
+                                    <span class="inline-block mt-1 px-2 py-0.5 text-[10px] font-semibold text-gray-600 bg-gray-100 rounded-full">
+                                        {{ \Carbon\Carbon::parse($item->tgl_kembali)->format('M Y') }}
+                                    </span>
+                                @endif
                             </td>
-                            <td class="px-5 py-3">{{ $item->kondisi_kembali }}</td>
-                            <td class="px-5 py-3">
-                                @if ($item->denda > 0)
-                                    <span class="text-red-600 font-bold">Rp{{ number_format($item->denda, 0, ',', '.') }}</span>
+                            <td class="px-4 py-4 text-xs font-medium">
+                                {{ $item->kondisi_kembali }}
+                            </td>
+                            <td class="px-4 py-4 text-xs font-bold whitespace-nowrap">
+                                @if($item->denda > 0)
+                                    <span class="text-red-600">Rp{{ number_format($item->denda, 0, ',', '.') }}</span>
                                 @else
                                     <span class="text-gray-400">-</span>
                                 @endif
                             </td>
-                            <td class="px-5 py-3">
-                                @php
-                                    $badge = match ($status) {
-                                        'selesai' => 'bg-green-100 text-green-700',
-                                        'telat' => 'bg-red-100 text-red-700',
-                                        default => 'bg-gray-100 text-gray-700',
-                                    };
-                                @endphp
-                                <span class="px-2.5 py-1 rounded-full text-xs font-semibold {{ $badge }}">
-                                    {{ ucfirst($status) }}
+                            <td class="px-4 py-4 whitespace-nowrap">
+                                <span class="px-3 py-1 text-xs font-semibold text-emerald-700 bg-emerald-100 rounded-full">
+                                    Selesai
                                 </span>
                             </td>
-                            <td class="px-5 py-3 text-gray-600">{{ $item->petugas->name ?? '-' }}</td>
-                            <td class="px-5 py-3">
-                                <div class="flex justify-end gap-2">
-                                    <a href="{{ route('admin.pengembalian.edit', $item->id) }}"
-                                       class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
-                                        Edit
-                                    </a>
-                                    <form action="{{ route('admin.pengembalian.destroy', $item->id) }}" method="POST"
-                                          onsubmit="return confirm('Batalkan pengembalian ini? Status peminjaman akan dikembalikan ke \'dipinjam\' dan stok alat disesuaikan.');">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button type="submit" class="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
-                                            Hapus
-                                        </button>
-                                    </form>
-                                </div>
+                            <td class="px-4 py-4 text-xs text-gray-600 whitespace-nowrap">
+                                {{ $item->petugas->name ?? 'herdi firdaus' }}
+                            </td>
+                            <td class="px-4 py-4 text-center whitespace-nowrap space-x-1">
+                                <a href="{{ route('admin.pengembalian.edit', $item->id) }}" 
+                                   class="px-3 py-1.5 text-xs font-semibold text-white bg-amber-500 rounded-md hover:bg-amber-600 transition inline-block">
+                                    Edit
+                                </a>
+                                <form action="{{ route('admin.pengembalian.destroy', $item->id) }}" method="POST" class="inline" onsubmit="return confirm('Yakin ingin menghapus data ini?')">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 transition">
+                                        Hapus
+                                    </button>
+                                </form>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="px-5 py-8 text-center text-gray-400">
-                                Belum ada data pengembalian{{ $bulan ? ' untuk bulan ini' : '' }}.
+                            <td colspan="9" class="text-center py-8 text-gray-400 text-sm">
+                                Tidak ada data pengembalian.
                             </td>
                         </tr>
                     @endforelse
@@ -171,11 +138,11 @@
             </table>
         </div>
 
-        {{-- Pagination --}}
-        <div class="p-5 border-t border-gray-200">
-            {{ $pengembalians->links() }}
-        </div>
-
+        @if(method_exists($pengembalians, 'links'))
+            <div class="p-4 border-t border-gray-100">
+                {{ $pengembalians->links() }}
+            </div>
+        @endif
     </div>
-
+</div>
 @endsection

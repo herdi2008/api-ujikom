@@ -3,32 +3,38 @@
 namespace App\Http\Controllers;
 
 use App\Models\Alat;
+use App\Models\DetailPinjam;
 use App\Models\Kategori;
-use App\Models\User;
 use App\Models\LogAktivitas;
 use App\Models\Peminjaman;
-use App\Models\DetailPinjam;
 use App\Models\Pengembalian;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
-    // Constant Tarif Denda Per Hari
+    // Tarif denda per hari keterlambatan
     const TARIF_DENDA_PER_HARI = 5000;
 
-    // Menampilkan Dashboard Admin & Log Aktivitas
+    // ===================== DASHBOARD =====================
+
     public function index()
     {
         $logs = LogAktivitas::with('user')->latest()->take(10)->get();
         $totalAlat = Alat::count();
-        $peminjamanAktif = Peminjaman::where('status', 'dipinjam')->count();
+        
+        // Menghitung status 'diajukan', 'dipinjam', dan 'telat'
+        $peminjamanAktif = Peminjaman::whereIn('status', ['diajukan', 'dipinjam', 'telat'])->count();
 
-        $pengembalianBulanIni = Pengembalian::whereMonth('tgl_kembali', now()->month)
-            ->whereYear('tgl_kembali', now()->year)
-            ->count();
+        // Diperbarui agar otomatis menghitung data pengembalian khusus bulan dan tahun berjalan
+        $pengembalianBulanIni = Pengembalian::whereMonth('tgl_kembali', Carbon::now()->month)
+                                    ->whereYear('tgl_kembali', Carbon::now()->year)
+                                    ->count();
 
         $totalUser = User::count();
 
@@ -49,11 +55,13 @@ class AdminController extends Controller
 
         $alats = Alat::with('kategori')
             ->when($search, function ($query, $search) {
-                return $query->where('nama_alat', 'like', "%{$search}%")
-                    ->orWhere('status_kondisi', 'like', "%{$search}%")
-                    ->orWhereHas('kategori', function ($q) use ($search) {
-                        $q->where('nama_kategori', 'like', "%{$search}%");
-                    });
+                $query->where(function ($q) use ($search) {
+                    $q->where('nama_alat', 'like', "%{$search}%")
+                        ->orWhere('status_kondisi', 'like', "%{$search}%")
+                        ->orWhereHas('kategori', function ($k) use ($search) {
+                            $k->where('nama_kategori', 'like', "%{$search}%");
+                        });
+                });
             })
             ->latest()
             ->paginate(10)
@@ -70,7 +78,7 @@ class AdminController extends Controller
 
     public function storeAlat(Request $request)
     {
-        $request->validate([
+        $data = $request->validate([
             'nama_alat' => 'required|string|max:255',
             'kategori_id' => 'required|exists:kategori,id',
             'stok' => 'required|integer|min:0',
@@ -79,21 +87,13 @@ class AdminController extends Controller
             'gambar' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
-        $data = $request->all();
-
         if ($request->hasFile('gambar')) {
-            $file = $request->file('gambar');
-            $filename = time() . '_' . $file->getClientOriginalName();
-            $file->move(public_path('storage/alat'), $filename);
-            $data['gambar'] = 'storage/alat/' . $filename;
+            $data['gambar'] = $this->simpanGambar($request->file('gambar'));
         }
 
         Alat::create($data);
 
-        LogAktivitas::create([
-            'user_id' => auth()->id(),
-            'aktivitas' => 'Menambahkan alat baru: ' . $request->nama_alat,
-        ]);
+        $this->catatLog('Menambahkan alat baru: ' . $data['nama_alat']);
 
         return redirect()->route('admin.alat.index')->with('success', 'Data alat berhasil ditambahkan.');
     }
@@ -109,7 +109,7 @@ class AdminController extends Controller
     {
         $alat = Alat::findOrFail($id);
 
-        $request->validate([
+        $data = $request->validate([
             'nama_alat' => 'required|string|max:255',
             'kategori_id' => 'required|exists:kategori,id',
             'stok' => 'required|integer|min:0',
@@ -118,17 +118,9 @@ class AdminController extends Controller
             'gambar' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
-        $data = $request->all();
-
         if ($request->hasFile('gambar')) {
-            if ($alat->gambar && file_exists(public_path($alat->gambar))) {
-                unlink(public_path($alat->gambar));
-            }
-
-            $file = $request->file('gambar');
-            $filename = time() . '_' . $file->getClientOriginalName();
-            $file->move(public_path('storage/alat'), $filename);
-            $data['gambar'] = 'storage/alat/' . $filename;
+            $this->hapusGambar($alat->gambar);
+            $data['gambar'] = $this->simpanGambar($request->file('gambar'));
         }
 
         $alat->update($data);
@@ -140,10 +132,12 @@ class AdminController extends Controller
     {
         $alat = Alat::findOrFail($id);
 
-        if ($alat->gambar && file_exists(public_path($alat->gambar))) {
-            unlink(public_path($alat->gambar));
+        if (DetailPinjam::where('alat_id', $alat->id)->exists()) {
+            return redirect()->route('admin.alat.index')
+                ->with('error', 'Alat tidak dapat dihapus karena sudah tercatat di data peminjaman.');
         }
 
+        $this->hapusGambar($alat->gambar);
         $alat->delete();
 
         return redirect()->route('admin.alat.index')->with('success', 'Data alat berhasil dihapus.');
@@ -156,9 +150,11 @@ class AdminController extends Controller
         $search = $request->input('search');
 
         $users = User::when($search, function ($query, $search) {
-            return $query->where('name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")
-                ->orWhere('role', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('role', 'like', "%{$search}%");
+            });
         })
             ->latest()
             ->paginate(10)
@@ -179,6 +175,7 @@ class AdminController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:6',
             'role' => 'required|in:admin,petugas,peminjam',
+            'no_hp' => 'nullable|string|max:20',
         ]);
 
         User::create([
@@ -204,8 +201,9 @@ class AdminController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email,' . $id,
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'role' => 'required|in:admin,petugas,peminjam',
+            'no_hp' => 'nullable|string|max:20',
         ]);
 
         $data = [
@@ -227,9 +225,15 @@ class AdminController extends Controller
     public function destroyUser($id)
     {
         $user = User::findOrFail($id);
+
+        if ($user->id === auth()->id()) {
+            return redirect()->route('admin.user.index')
+                ->with('error', 'Kamu tidak dapat menghapus akun yang sedang digunakan.');
+        }
+
         $user->delete();
 
-        return redirect()->route('admin.user.index')->with('success', 'User dihapus.');
+        return redirect()->route('admin.user.index')->with('success', 'User berhasil dihapus.');
     }
 
     // ===================== CRUD KATEGORI =====================
@@ -239,7 +243,7 @@ class AdminController extends Controller
         $search = $request->input('search');
 
         $kategoris = Kategori::when($search, function ($query, $search) {
-            return $query->where('nama_kategori', 'like', "%{$search}%");
+            $query->where('nama_kategori', 'like', "%{$search}%");
         })
             ->latest()
             ->paginate(10)
@@ -263,6 +267,8 @@ class AdminController extends Controller
             'nama_kategori' => $request->nama_kategori,
         ]);
 
+        $this->catatLog('Menambahkan kategori baru: ' . $request->nama_kategori);
+
         return redirect()->route('admin.kategori.index')->with('success', 'Kategori berhasil ditambahkan.');
     }
 
@@ -277,12 +283,21 @@ class AdminController extends Controller
         $kategori = Kategori::findOrFail($id);
 
         $request->validate([
-            'nama_kategori' => 'required|string|max:255|unique:kategori,nama_kategori,' . $id,
+            'nama_kategori' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('kategori', 'nama_kategori')->ignore($kategori->id),
+            ],
         ]);
+
+        $namaLama = $kategori->nama_kategori;
 
         $kategori->update([
             'nama_kategori' => $request->nama_kategori,
         ]);
+
+        $this->catatLog("Mengubah kategori: {$namaLama} menjadi {$request->nama_kategori}");
 
         return redirect()->route('admin.kategori.index')->with('success', 'Kategori berhasil diperbarui.');
     }
@@ -291,11 +306,14 @@ class AdminController extends Controller
     {
         $kategori = Kategori::findOrFail($id);
 
-        if ($kategori->alats()->count() > 0) {
-            return redirect()->route('admin.kategori.index')->with('error', 'Kategori tidak dapat dihapus karena masih digunakan oleh data alat.');
+        if ($kategori->alat()->exists()) {
+            return redirect()->route('admin.kategori.index')
+                ->with('error', 'Kategori tidak dapat dihapus karena masih digunakan oleh data alat.');
         }
 
         $kategori->delete();
+
+        $this->catatLog('Menghapus kategori: ' . $kategori->nama_kategori);
 
         return redirect()->route('admin.kategori.index')->with('success', 'Kategori berhasil dihapus.');
     }
@@ -308,10 +326,12 @@ class AdminController extends Controller
 
         $peminjamans = Peminjaman::with(['user', 'detailPinjam.alat'])
             ->when($search, function ($query, $search) {
-                return $query->where('status', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%");
-                    });
+                $query->where(function ($q) use ($search) {
+                    $q->where('status', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($u) use ($search) {
+                            $u->where('name', 'like', "%{$search}%");
+                        });
+                });
             })
             ->latest()
             ->paginate(10)
@@ -334,7 +354,7 @@ class AdminController extends Controller
             'tgl_pinjam' => 'required|date',
             'tgl_kembali_plan' => 'required|date|after_or_equal:tgl_pinjam',
             'alat_id' => 'required|array',
-            'alat_id.*' => 'exists:alat,id',
+            'alat_id.*' => 'distinct|exists:alat,id',
             'jumlah' => 'required|array',
             'jumlah.*' => 'integer|min:1',
         ]);
@@ -349,7 +369,7 @@ class AdminController extends Controller
             ]);
 
             foreach ($request->alat_id as $index => $alatId) {
-                $jumlahPinjam = $request->jumlah[$index];
+                $jumlahPinjam = (int) $request->jumlah[$index];
                 $alat = Alat::findOrFail($alatId);
 
                 if ($alat->stok < $jumlahPinjam) {
@@ -373,23 +393,24 @@ class AdminController extends Controller
 
     public function updateStatusPeminjaman(Request $request, $id)
     {
-        $peminjaman = Peminjaman::with('detailPinjam.alat')->findOrFail($id);
+        $request->merge(['status' => strtolower((string) $request->input('status'))]);
 
         $request->validate([
-            'status' => 'required|in:diajukan,dipinjam,selesai,telat,dikembali,dikembalikan,Diajukan,Dipinjam,Selesai,Telat,Dikembali,Dikembalikan',
+            'status' => 'required|in:diajukan,dipinjam,selesai,telat,dikembali,dikembalikan',
         ]);
+
+        $peminjaman = Peminjaman::with('detailPinjam.alat')->findOrFail($id);
 
         DB::beginTransaction();
         try {
             $statusLama = strtolower($peminjaman->status);
-            $statusBaru = strtolower($request->status);
+            $statusBaru = $request->status;
 
             if (in_array($statusBaru, ['dikembali', 'dikembalikan'])) {
                 $statusBaru = 'selesai';
             }
 
-            // 1. Jika diubah ke "Dipinjam" (Stok berkurang)
-            if ($statusLama != 'dipinjam' && $statusBaru == 'dipinjam') {
+            if ($statusLama !== 'dipinjam' && $statusBaru === 'dipinjam') {
                 foreach ($peminjaman->detailPinjam as $detail) {
                     $alat = $detail->alat;
                     if ($alat->stok < $detail->jumlah) {
@@ -397,31 +418,23 @@ class AdminController extends Controller
                     }
                     $alat->decrement('stok', $detail->jumlah);
                 }
-            } 
-            // 2. Jika diubah ke "Selesai" / "Dikembalikan" (Hitung denda otomatis & stok kembali)
-            elseif ($statusLama == 'dipinjam' && ($statusBaru == 'selesai' || $statusBaru == 'dikembalikan')) {
-                $tglHariIni = Carbon::now()->startOfDay();
-                $tglPlan = Carbon::parse($peminjaman->tgl_kembali_plan)->startOfDay();
+            } elseif ($statusLama === 'dipinjam' && $statusBaru === 'selesai') {
+                $denda = $this->hitungDenda($peminjaman->tgl_kembali_plan, now());
 
-                $dendaOtomatis = 0;
-                if ($tglHariIni->greaterThan($tglPlan)) {
-                    $selisihHari = $tglPlan->diffInDays($tglHariIni);
-                    $dendaOtomatis = $selisihHari * self::TARIF_DENDA_PER_HARI;
-                    $statusBaru = 'telat'; // Ubah status ke telat jika melewati deadline
+                if ($denda > 0) {
+                    $statusBaru = 'telat';
                 }
 
-                // Buat/update record pengembalian
                 Pengembalian::updateOrCreate(
                     ['peminjaman_id' => $peminjaman->id],
                     [
                         'tgl_kembali' => now()->toDateString(),
                         'kondisi_kembali' => 'Baik',
-                        'denda' => $dendaOtomatis,
+                        'denda' => $denda,
                         'petugas_id' => auth()->id(),
                     ]
                 );
 
-                // Kembalikan stok alat
                 foreach ($peminjaman->detailPinjam as $detail) {
                     $detail->alat->increment('stok', $detail->jumlah);
                 }
@@ -439,15 +452,17 @@ class AdminController extends Controller
 
     public function destroyPeminjaman($id)
     {
-        $peminjaman = Peminjaman::with('detailPinjam')->findOrFail($id);
+        $peminjaman = Peminjaman::with('detailPinjam.alat')->findOrFail($id);
 
-        if ($peminjaman->status == 'dipinjam') {
-            foreach ($peminjaman->detailPinjam as $detail) {
-                $detail->alat->increment('stok', $detail->jumlah);
+        DB::transaction(function () use ($peminjaman) {
+            if (strtolower($peminjaman->status) === 'dipinjam') {
+                foreach ($peminjaman->detailPinjam as $detail) {
+                    $detail->alat->increment('stok', $detail->jumlah);
+                }
             }
-        }
 
-        $peminjaman->delete();
+            $peminjaman->delete();
+        });
 
         return redirect()->route('admin.peminjaman.index')->with('success', 'Data peminjaman berhasil dihapus.');
     }
@@ -461,27 +476,44 @@ class AdminController extends Controller
 
         $pengembalians = Pengembalian::with(['peminjaman.user', 'peminjaman.detailPinjam.alat', 'petugas'])
             ->when($search, function ($query, $search) {
-                return $query->where('kondisi_kembali', 'like', "%{$search}%")
-                    ->orWhereHas('peminjaman', function ($q) use ($search) {
-                        $q->where('status', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('peminjaman.user', function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%");
-                    })
-                    ->orWhereHas('petugas', function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%");
-                    });
+                $query->where(function ($q) use ($search) {
+                    $q->where('kondisi_kembali', 'like', "%{$search}%")
+                        ->orWhereHas('peminjaman', function ($p) use ($search) {
+                            $p->where('status', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('peminjaman.user', function ($u) use ($search) {
+                            $u->where('name', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('petugas', function ($t) use ($search) {
+                            $t->where('name', 'like', "%{$search}%");
+                        });
+                });
             })
-            ->when($bulan, function ($query) use ($bulan) {
+            ->when($bulan && preg_match('/^\d{4}-\d{2}$/', $bulan), function ($query) use ($bulan) {
                 [$year, $month] = explode('-', $bulan);
-                return $query->whereMonth('tgl_kembali', $month)
-                    ->whereYear('tgl_kembali', $year);
+                $query->whereYear('tgl_kembali', $year)
+                    ->whereMonth('tgl_kembali', $month);
             })
             ->latest()
             ->paginate(10)
             ->withQueryString();
 
-        return view('admin.pengembalian.index', compact('pengembalians', 'search', 'bulan'));
+        $peminjamanAktifCount = Peminjaman::whereIn('status', ['dipinjam', 'telat'])->count();
+
+        $totalUnitDipinjam = DetailPinjam::whereHas('peminjaman', function ($q) {
+            $q->whereIn('status', ['dipinjam', 'telat']);
+        })->sum('jumlah');
+
+        $terlambatCount = Peminjaman::where('status', 'telat')->count();
+
+        return view('admin.pengembalian.index', compact(
+            'pengembalians', 
+            'search', 
+            'bulan', 
+            'peminjamanAktifCount',
+            'totalUnitDipinjam', 
+            'terlambatCount'
+        ));
     }
 
     public function createPengembalian()
@@ -511,19 +543,9 @@ class AdminController extends Controller
 
         DB::beginTransaction();
         try {
-            $tglPlan = Carbon::parse($peminjaman->tgl_kembali_plan)->startOfDay();
-            $tglReal = Carbon::parse($request->tgl_kembali)->startOfDay();
-
-            $dendaOtomatis = 0;
-            $statusAkhir = 'selesai';
-
-            if ($tglReal->greaterThan($tglPlan)) {
-                $selisihHari = $tglPlan->diffInDays($tglReal);
-                $dendaOtomatis = $selisihHari * self::TARIF_DENDA_PER_HARI;
-                $statusAkhir = 'telat';
-            }
-
-            $totalDenda = $dendaOtomatis + ($request->denda ?? 0);
+            $dendaOtomatis = $this->hitungDenda($peminjaman->tgl_kembali_plan, $request->tgl_kembali);
+            $statusAkhir = $dendaOtomatis > 0 ? 'telat' : 'selesai';
+            $totalDenda = $dendaOtomatis + (int) ($request->denda ?? 0);
 
             Pengembalian::create([
                 'peminjaman_id' => $peminjaman->id,
@@ -539,13 +561,13 @@ class AdminController extends Controller
                 $detail->alat->increment('stok', $detail->jumlah);
             }
 
-            LogAktivitas::create([
-                'user_id' => auth()->id(),
-                'aktivitas' => "Memproses pengembalian peminjaman ID: #{$peminjaman->id} dengan status akhir: {$statusAkhir} dan denda: Rp" . number_format($totalDenda, 0, ',', '.'),
-            ]);
+            $this->catatLog(
+                "Memproses pengembalian peminjaman ID: #{$peminjaman->id} dengan status akhir: {$statusAkhir} dan denda: Rp"
+                . number_format($totalDenda, 0, ',', '.')
+            );
 
             DB::commit();
-            return redirect()->route('admin.peminjaman.index')->with('success', 'Pengembalian berhasil dipproses.');
+            return redirect()->route('admin.peminjaman.index')->with('success', 'Pengembalian berhasil diproses.');
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->with('error', $e->getMessage());
@@ -560,7 +582,7 @@ class AdminController extends Controller
 
     public function updatePengembalian(Request $request, $id)
     {
-        $pengembalian = Pengembalian::with('peminjaman')->findOrFail($id);
+        $pengembalian = Pengembalian::findOrFail($id);
 
         $request->validate([
             'kondisi_kembali' => 'required|string|max:255',
@@ -572,10 +594,7 @@ class AdminController extends Controller
             'denda' => $request->denda,
         ]);
 
-        LogAktivitas::create([
-            'user_id' => auth()->id(),
-            'aktivitas' => "Mengoreksi data pengembalian untuk peminjaman ID: #{$pengembalian->peminjaman_id}.",
-        ]);
+        $this->catatLog("Mengoreksi data pengembalian untuk peminjaman ID: #{$pengembalian->peminjaman_id}.");
 
         return redirect()->route('admin.pengembalian.index')->with('success', 'Data pengembalian berhasil diperbarui.');
     }
@@ -598,16 +617,52 @@ class AdminController extends Controller
             $peminjaman->update(['status' => 'dipinjam']);
             $pengembalian->delete();
 
-            LogAktivitas::create([
-                'user_id' => auth()->id(),
-                'aktivitas' => "Membatalkan data pengembalian untuk peminjaman ID: #{$peminjaman->id}, status dikembalikan ke 'dipinjam'.",
-            ]);
+            $this->catatLog("Membatalkan data pengembalian untuk peminjaman ID: #{$peminjaman->id}, status dikembalikan ke 'dipinjam'.");
 
             DB::commit();
             return redirect()->route('admin.pengembalian.index')->with('success', 'Data pengembalian berhasil dibatalkan.');
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->with('error', $e->getMessage());
+        }
+    }
+
+    // ===================== HELPER =====================
+
+    private function hitungDenda($tglPlan, $tglKembali): int
+    {
+        $plan = Carbon::parse($tglPlan)->startOfDay();
+        $real = Carbon::parse($tglKembali)->startOfDay();
+
+        if ($real->lessThanOrEqualTo($plan)) {
+            return 0;
+        }
+
+        $selisihHari = (int) $plan->diffInDays($real);
+
+        return $selisihHari * self::TARIF_DENDA_PER_HARI;
+    }
+
+    private function catatLog(string $aktivitas): void
+    {
+        LogAktivitas::create([
+            'user_id' => auth()->id(),
+            'aktivitas' => $aktivitas,
+        ]);
+    }
+
+    private function simpanGambar($file): string
+    {
+        $namaFile = time() . '_' . Str::random(6) . '.' . $file->getClientOriginalExtension();
+        $file->move(public_path('storage/alat'), $namaFile);
+
+        return 'storage/alat/' . $namaFile;
+    }
+
+    private function hapusGambar(?string $path): void
+    {
+        if ($path && file_exists(public_path($path))) {
+            unlink(public_path($path));
         }
     }
 }
