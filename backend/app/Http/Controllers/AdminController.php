@@ -27,7 +27,7 @@ class AdminController extends Controller
     {
         $logs = LogAktivitas::with('user')->latest()->take(10)->get();
         $totalAlat = Alat::count();
-        
+
         // Menghitung status 'diajukan', 'dipinjam', dan 'telat'
         $peminjamanAktif = Peminjaman::whereIn('status', ['diajukan', 'dipinjam', 'telat'])->count();
 
@@ -125,6 +125,8 @@ class AdminController extends Controller
 
         $alat->update($data);
 
+        $this->catatLog('Mengubah data alat: ' . $alat->nama_alat);
+
         return redirect()->route('admin.alat.index')->with('success', 'Data alat berhasil diperbarui.');
     }
 
@@ -137,8 +139,12 @@ class AdminController extends Controller
                 ->with('error', 'Alat tidak dapat dihapus karena sudah tercatat di data peminjaman.');
         }
 
+        $namaAlat = $alat->nama_alat;
+
         $this->hapusGambar($alat->gambar);
         $alat->delete();
+
+        $this->catatLog('Menghapus alat: ' . $namaAlat);
 
         return redirect()->route('admin.alat.index')->with('success', 'Data alat berhasil dihapus.');
     }
@@ -186,6 +192,8 @@ class AdminController extends Controller
             'no_hp' => $request->no_hp,
         ]);
 
+        $this->catatLog('Menambahkan user baru: ' . $request->name . ' (' . $request->role . ')');
+
         return redirect()->route('admin.user.index')->with('success', 'User berhasil ditambahkan.');
     }
 
@@ -219,6 +227,8 @@ class AdminController extends Controller
 
         $user->update($data);
 
+        $this->catatLog('Mengubah data user: ' . $user->name);
+
         return redirect()->route('admin.user.index')->with('success', 'Data user berhasil diperbarui.');
     }
 
@@ -231,7 +241,11 @@ class AdminController extends Controller
                 ->with('error', 'Kamu tidak dapat menghapus akun yang sedang digunakan.');
         }
 
+        $namaUser = $user->name;
+
         $user->delete();
+
+        $this->catatLog('Menghapus user: ' . $namaUser);
 
         return redirect()->route('admin.user.index')->with('success', 'User berhasil dihapus.');
     }
@@ -383,6 +397,8 @@ class AdminController extends Controller
                 ]);
             }
 
+            $this->catatLog('Mengajukan peminjaman baru (ID #' . $peminjaman->id . ') untuk user ID: ' . $request->user_id);
+
             DB::commit();
             return redirect()->route('admin.peminjaman.index')->with('success', 'Data peminjaman berhasil diajukan.');
         } catch (\Exception $e) {
@@ -442,6 +458,8 @@ class AdminController extends Controller
 
             $peminjaman->update(['status' => $statusBaru]);
 
+            $this->catatLog("Mengubah status peminjaman #{$peminjaman->id} dari '{$statusLama}' menjadi '{$statusBaru}'");
+
             DB::commit();
             return redirect()->route('admin.peminjaman.index')->with('success', 'Status peminjaman berhasil diperbarui.');
         } catch (\Exception $e) {
@@ -463,6 +481,8 @@ class AdminController extends Controller
 
             $peminjaman->delete();
         });
+
+        $this->catatLog("Menghapus data peminjaman #{$peminjaman->id}");
 
         return redirect()->route('admin.peminjaman.index')->with('success', 'Data peminjaman berhasil dihapus.');
     }

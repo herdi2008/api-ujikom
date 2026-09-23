@@ -1,9 +1,9 @@
 <?php
 
-
 namespace Database\Seeders;
 
 use App\Models\Alat;
+use App\Models\Kategori;
 use Illuminate\Database\Seeder;
 
 class AlatSeeder extends Seeder
@@ -12,7 +12,7 @@ class AlatSeeder extends Seeder
     {
         $alat = [
             [
-                'kategori_id' => 1,
+                'kategori' => 'Jaringan & Konektivitas',
                 'nama_alat' => 'Router Mikrotik RB941-2nD',
                 'stok' => 15,
                 'status_kondisi' => 'Baik',
@@ -20,7 +20,7 @@ class AlatSeeder extends Seeder
                 'gambar' => 'mikrotik_rb941.jpg',
             ],
             [
-                'kategori_id' => 2,
+                'kategori' => 'Multimedia & Audio Visual',
                 'nama_alat' => 'Kamera DSLR Canon EOS 3000D',
                 'stok' => 5,
                 'status_kondisi' => 'Baik',
@@ -28,7 +28,7 @@ class AlatSeeder extends Seeder
                 'gambar' => 'canon_3000d.jpg',
             ],
             [
-                'kategori_id' => 3,
+                'kategori' => 'Perangkat Pemrosesan',
                 'nama_alat' => 'Mini PC Intel NUC 11',
                 'stok' => 8,
                 'status_kondisi' => 'Baik',
@@ -36,7 +36,7 @@ class AlatSeeder extends Seeder
                 'gambar' => 'intel_nuc.jpg',
             ],
             [
-                'kategori_id' => 4,
+                'kategori' => 'Perkakas & Elektronik',
                 'nama_alat' => 'Tang Crimping RJ45/RJ11 Proskit',
                 'stok' => 20,
                 'status_kondisi' => 'Baik',
@@ -44,7 +44,7 @@ class AlatSeeder extends Seeder
                 'gambar' => 'crimping_proskit.jpg',
             ],
             [
-                'kategori_id' => 5,
+                'kategori' => 'Suku Cadang & Aksesoris',
                 'nama_alat' => 'Adapter HDMI to VGA dengan Audio',
                 'stok' => 25,
                 'status_kondisi' => 'Baik',
@@ -54,7 +54,23 @@ class AlatSeeder extends Seeder
         ];
 
         foreach ($alat as $item) {
-            Alat::create($item);
+            $kategoriId = Kategori::where('nama_kategori', $item['kategori'])->value('id');
+
+            if (!$kategoriId) {
+                $this->command->warn("Kategori '{$item['kategori']}' tidak ditemukan, alat '{$item['nama_alat']}' dilewati.");
+                continue;
+            }
+
+            Alat::firstOrCreate(
+                ['nama_alat' => $item['nama_alat']],
+                [
+                    'kategori_id' => $kategoriId,
+                    'stok' => $item['stok'],
+                    'status_kondisi' => $item['status_kondisi'],
+                    'deskripsi' => $item['deskripsi'],
+                    'gambar' => $item['gambar'],
+                ]
+            );
         }
     }
 }
